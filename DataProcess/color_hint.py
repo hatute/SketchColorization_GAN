@@ -31,7 +31,7 @@ def generate_color_map(img):
 
 
 def generate_whiteout(img, block_shape, block_num):
-    if min(block_shape) > min(img.shape) - 1:
+    if min(block_shape) > min(img.shape[:2]) - 1:
         raise ValueError('Block too large')
     output = img.copy()
     for _ in range(block_num):
