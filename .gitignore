@@ -1,5 +1,5 @@
 .idea/
 models/*.h*
-dataset/
+dataset/*.jpg
 *.jpg
 *.png

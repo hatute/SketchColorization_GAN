@@ -22,8 +22,8 @@ def median_pyramid(img, filter_size=2):
 def generate_color_map(img):
     blurred = median_pyramid(img, 4)
     blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
-    blurred = median_pyramid(blurred, 4)
-    blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
+    # blurred = median_pyramid(blurred, 4)
+    # blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
     blurred = median_pyramid(blurred, 4)
     blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
     blurred = cv2.resize(blurred, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
@@ -103,8 +103,7 @@ def generate_color_block_random_normal(origin_img, img, block_shape_miu, block_n
 
 
 if __name__ == "__main__":
-    # img_path = '../demo8.jpg'
-    img_path = "/Users/swellmai/Program/pycharm/SpringCSE676/demo_part/demo2.jpg"
+    img_path = '../demo3.jpg'
     img = cv2.imread(img_path)
     # erosion = cv2.erode(img, np.ones((1, 1)), iterations=2)
     # dilation = cv2.dilate(img, np.ones((3, 3)), iterations=1)
@@ -117,6 +116,5 @@ if __name__ == "__main__":
 
     blocked = generate_color_block_random_normal(origin_img=img, img=blurred, block_num=25, block_shape_miu=5,
                                                  block_shape_sigma=6)
-    blocked = cv2.cvtColor(blocked, cv2.COLOR_BGR2RGB)
     plt.imshow(blocked)
     plt.show()
