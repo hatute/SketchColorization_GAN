@@ -22,8 +22,8 @@ def median_pyramid(img, filter_size=2):
 def generate_color_map(img):
     blurred = median_pyramid(img, 4)
     blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
-    # blurred = median_pyramid(blurred, 4)
-    # blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
+    blurred = median_pyramid(blurred, 4)
+    blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
     blurred = median_pyramid(blurred, 4)
     blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
     blurred = cv2.resize(blurred, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
@@ -95,9 +95,11 @@ def generate_color_block_random_normal(origin_img, img, block_shape_miu, block_n
         n = random.randint(0, img.shape[1] - block_shape)
         block = origin_img[m:m + block_shape, n:n + block_shape, :]
         var = np.sum(np.var(block, axis=(0, 1)))
-        # if var:
-        #     continue
+        print(block_shape, m, n)
+        if var > 1000:
+            continue
         output[m:m + block_shape, n:n + block_shape, :] = np.average(block, axis=(0, 1)).reshape(1, 1, 3)
+        cv2.rectangle(output, (n, m), (n + block_shape, m + block_shape), (0, 0, 255), 1)
         iter += 1
     return output
 
@@ -112,9 +114,12 @@ if __name__ == "__main__":
     # cv2.waitKey()
     img = cv2.resize(img, (512, 512))
     blurred = generate_color_map(img)
-    blurred = cv2.cvtColor(blurred, cv2.COLOR_BGR2RGB)
+    # blurred = cv2.cvtColor(blurred, cv2.COLOR_BGR2RGB)
 
-    blocked = generate_color_block_random_normal(origin_img=img, img=blurred, block_num=25, block_shape_miu=5,
+    blocked = generate_color_block_random_normal(origin_img=img, img=img, block_num=5, block_shape_miu=5,
                                                  block_shape_sigma=6)
-    plt.imshow(blocked)
-    plt.show()
+    cv2.imshow('demo3', blocked)
+    cv2.waitKey()
+    # blocked = cv2.cvtColor(blocked, cv2.COLOR_BGR2RGB)
+    # plt.imshow(blocked)
+    # plt.show()
