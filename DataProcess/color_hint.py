@@ -8,6 +8,12 @@ import random
 
 
 def median_pyramid(img, filter_size=2):
+    """
+    process of average pooling
+    :param img: image, with shape(m, n)
+    :param filter_size: filter size z
+    :return: result image with shape (m/z, n/z)
+    """
     m, n, channels = img.shape[0], img.shape[1], img.shape[2]
     channels = img.shape[2]
     res = np.zeros((m // filter_size, n // filter_size, channels))
@@ -20,6 +26,11 @@ def median_pyramid(img, filter_size=2):
 
 
 def generate_color_map(img):
+    """
+    calculate color map of a single image, here we do 3 times Gaussian pyramid and then resize to the original shape
+    :param img: original image(single)
+    :return: color map(as the initial color hit)
+    """
     blurred = median_pyramid(img, 4)
     blurred = cv2.GaussianBlur(blurred, (3, 3), 1)
     blurred = median_pyramid(blurred, 4)
@@ -31,6 +42,13 @@ def generate_color_map(img):
 
 
 def generate_whiteout(img, block_shape, block_num):
+    """
+    add whiteout to the color map with fixed block shape and number
+    :param img: color map(or raw image if you want)
+    :param block_shape: fixed block shape
+    :param block_num: fixed block number
+    :return: image with whiteout
+    """
     if min(block_shape) > min(img.shape[:2]) - 1:
         raise ValueError('Block too large')
     output = img.copy()
@@ -42,30 +60,19 @@ def generate_whiteout(img, block_shape, block_num):
 
 
 def generate_color_block(origin_img, img, block_shape, block_num):
-    if not origin_img.shape == img.shape:
-        raise ValueError('Original image and input image must have the same shape')
-    if min(block_shape) > min(img.shape) - 1:
-        raise ValueError('Block too large')
-    iter = 0
-    output = img.copy()
-    while iter < block_num:
-        m = random.randint(0, img.shape[0] - block_shape[0])
-        n = random.randint(0, img.shape[1] - block_shape[1])
-        block = origin_img[m:m + block_shape[0], n:n + block_shape[1], :]
-        var = np.sum(np.var(block, axis=(0, 1)))
-        # if var:
-        #     continue
-        output[m:m + block_shape[0], n:n + block_shape[1], :] = np.average(block, axis=(0, 1)).reshape(1, 1, 3)
-        iter += 1
-    return output
-
-
-def generate_color_block_random(origin_img, img, block_shape, block_num):
+    """
+    generate color blocks from original image and store them in a given image(it can be anything), with fixed block shape
+    and number
+    :param origin_img: original image
+    :param img: image to store the color blocks
+    :param block_shape: fixed block shape
+    :param block_num: fixed block shape
+    :return: image where store the color blocks
+    """
     if not origin_img.shape == img.shape:
         raise ValueError('Original image and input image must have the same shape')
     if min(block_shape) > min(img.shape[:2]) - 1:
         raise ValueError('Shape of original image is ' + str(origin_img.shape) + ', Block too large')
-
     iter = 0
     output = img.copy()
     while iter < block_num:

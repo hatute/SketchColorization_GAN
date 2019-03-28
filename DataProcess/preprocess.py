@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-#import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from keras.models import load_model
 import os
 from scipy import ndimage
@@ -9,6 +9,11 @@ from keras import backend as K
 
 
 def sketch_keras(batch_img):  # shape:(n, 512, 512, 3)
+    """
+    extract sketches from a batch of images
+    :param batch_img: a batch of images
+    :return: a batch of sketches
+    """
     n = len(batch_img)
     model = load_model('../models/sketchKeras.h5')
     sketches = []
@@ -45,6 +50,16 @@ def sketch_keras(batch_img):  # shape:(n, 512, 512, 3)
 
 
 def sketch_extract(base_path, img_file_path, out_dir, mod='sketchKeras', resize_shape=(512, 512), batch_size=128):
+    """
+    extract sketch of images from given directory
+    :param base_path: the directory of raw images
+    :param img_file_path: the path of file which store the image path (conclude name) in the base_path
+    :param out_dir: where to store the sketches
+    :param mod: way to extract sketches
+    :param resize_shape: the shape of output sketches
+    :param batch_size: batch size
+    :return: None
+    """
     with open(img_file_path, 'r') as f:
         images_path = f.readlines()
     batch_img = []
@@ -115,7 +130,7 @@ if __name__ == "__main__":
     color_hint_whiteout_output = '../dataset/color_hint_with_whiteout'  # directory to store color hint added whiteout
     color_block_output = '../dataset/color_block'  # directory to store color block
     resize_shape = (512, 512)  # raw images should be resized
-    for i in range(1, 9, 1):
+    for i in range(1, 2, 1):
         list_file = '../dataset/image_list_{:d}.txt'.format(i)  # get image list
 
         # sketch extraction
@@ -151,11 +166,11 @@ if __name__ == "__main__":
             cv2.imwrite(os.path.join(color_hint_output_each, img_num + '_colorhint.jpg'), color_hint)
             print('Saved [{}]'.format(os.path.join(color_hint_output_each, img_num + '_colorhint.jpg')))
 
-            color_hint_whiteout = generate_whiteout(color_hint, (), 0)  # to be determined
+            color_hint_whiteout = generate_whiteout(color_hint, (10, 10), 10)  # to be determined
             cv2.imwrite(os.path.join(color_hint_whiteout_output_each, img_num + '_whiteout.jpg'), color_hint_whiteout)
             print('Saved [{}]'.format(os.path.join(color_hint_whiteout_output_each, img_num + '_whiteout.jpg')))
 
             white_canvas = np.ones_like(raw_image) * 255
-            color_block = generate_color_block(raw_image, white_canvas, (), 0)  # to be determined
+            color_block = generate_color_block(raw_image, white_canvas, (10, 10), 15)  # to be determined
             cv2.imwrite(os.path.join(color_block_output_each, img_num + '_colorblock.jpg'), color_block)
             print('Saved [{}]'.format(os.path.join(color_block_output_each, img_num + '_colorblock.jpg')))

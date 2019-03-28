@@ -8,6 +8,12 @@ import socket
 
 
 def download_pic(url, save_path):
+    '''
+    download one picture from given url
+    :param url: picture lies in
+    :param save_path: save to pointed directory
+    :return: None
+    '''
     succeed = True
     try:
         response = urllib.request.urlopen(url, timeout=10)
@@ -31,6 +37,14 @@ def download_pic(url, save_path):
 
 
 def download_from_page(url, page_range, save_path, start_page=1):
+    """
+    Download several(24 the most) pictures from one given page, it is invalid after 1000 pages
+    :param url: collected-pictures page
+    :param page_range: number of pages to be downloaded
+    :param save_path: save to a pointed directory
+    :param start_page: start page number
+    :return: None
+    """
     total = 0
     for page in range(start_page, page_range + 1, 1):
         count = 0
@@ -52,6 +66,9 @@ def download_from_page(url, page_range, save_path, start_page=1):
 
 
 def download_over_1000(url, start_id, end_id, save_path, jump=1):
+    """
+    almost same as 'download_pic'
+    """
     total = 0
     for id in range(start_id, end_id + 1, jump):
         name = '{:07d}.jpg'.format(id)
@@ -66,6 +83,9 @@ def download_over_1000(url, start_id, end_id, save_path, jump=1):
 
 
 def login(url, data, headers):
+    """
+    not used yet
+    """
     sess = requests.session()
     response = sess.post(url, data=data, headers=headers)
     return sess, response
