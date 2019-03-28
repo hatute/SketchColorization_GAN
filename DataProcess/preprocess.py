@@ -155,7 +155,7 @@ if __name__ == "__main__":
 
         with open(list_file) as f:
             img_names = f.readlines()  # get all images' name
-        for name in img_names:
+        for i, name in enumerate(img_names):
             img_name = name.strip('\n')
             raw_image = cv2.imread(os.path.join(base_path, img_name))
             raw_image = cv2.resize(raw_image, resize_shape)
@@ -164,13 +164,17 @@ if __name__ == "__main__":
 
             color_hint = generate_color_map(raw_image)
             cv2.imwrite(os.path.join(color_hint_output_each, img_num + '_colorhint.jpg'), color_hint)
-            print('Saved [{}]'.format(os.path.join(color_hint_output_each, img_num + '_colorhint.jpg')))
+            print('Saved [{}]'.format(os.path.join(color_hint_output_each, img_num + '_colorhint.jpg')),
+                  '--no.{}'.format(i + 1))
 
             color_hint_whiteout = generate_whiteout(color_hint, (10, 10), 10)  # to be determined
             cv2.imwrite(os.path.join(color_hint_whiteout_output_each, img_num + '_whiteout.jpg'), color_hint_whiteout)
-            print('Saved [{}]'.format(os.path.join(color_hint_whiteout_output_each, img_num + '_whiteout.jpg')))
+            print('Saved [{}]'.format(os.path.join(color_hint_whiteout_output_each, img_num + '_whiteout.jpg')),
+                  '--no.{}'.format(i + 1))
 
             white_canvas = np.ones_like(raw_image) * 255
             color_block = generate_color_block(raw_image, white_canvas, (10, 10), 15)  # to be determined
             cv2.imwrite(os.path.join(color_block_output_each, img_num + '_colorblock.jpg'), color_block)
-            print('Saved [{}]'.format(os.path.join(color_block_output_each, img_num + '_colorblock.jpg')))
+            print('Saved [{}]'.format(os.path.join(color_block_output_each, img_num + '_colorblock.jpg')),
+                  '--no.{}'.format(i + 1))
+        print('*' * 10 + 'Saved [{}]'.format(len(img_names)) + ' from ', list_file + '*' * 10)

@@ -9,8 +9,8 @@ import cv2
 # base line
 class Unet:
     def __init__(self, image_shape, batch_size):
-        self.input = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], None), name='input')
-        self.condition = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], None),
+        self.input = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], 2), name='input')
+        self.condition = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], 6),
                                         name='condition')
         self.target = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], 3), name='output')
         self.batch_size = batch_size
@@ -28,9 +28,9 @@ class Unet:
 
             with tf.variable_scope('last_encode'):
                 layer = tf.layers.conv2d(inputs=sample_encode4, filters=1024, kernel_size=(3, 3),
-                                         activation=tf.nn.leaky_relu, name='conv1')
+                                         activation=tf.nn.leaky_relu, name='conv1', padding='same')
                 layer = tf.layers.conv2d(inputs=layer, filters=1024, kernel_size=(3, 3),
-                                         activation=tf.nn.leaky_relu, name='conv2')
+                                         activation=tf.nn.leaky_relu, name='conv2', padding='same')
             decode1, _ = self.cnn_block(layer, 512, (3, 3), sample_type='deconv', scope_name='decode1',
                                         deconv_concatenate=encode4)
             decode2, _ = self.cnn_block(decode1, 256, (3, 3), sample_type='deconv', scope_name='decode2',
@@ -95,7 +95,7 @@ class Unet:
             return out, sample_out
 
     def train(self, inputs, targets, conditions, epochs, learning_rate=0.01, clip_low=-1, clip_high=1):
-        d_input = tf.placeholder(tf.float32, shape=(None, inputs.shape[1], inputs.shape[2], None), name='d_inputs')
+        d_input = tf.placeholder(tf.float32, shape=(None, inputs.shape[1], inputs.shape[2], 3), name='d_inputs')
         g_logits = self.generator()
         d_logits_real = self.discriminator(d_input, reuse=False)
         d_logits_fake = self.discriminator(g_logits, reuse=True)
@@ -176,7 +176,7 @@ if __name__ == '__main__':
     targets = []
     inputs = []
     conditions = []
-    for path in images_path:
+    for count, path in enumerate(images_path):
         path = path.strip('\n')
         img_path = os.path.join(base_path, path)
         img_name = path.split('/')[-1]
@@ -190,7 +190,7 @@ if __name__ == '__main__':
         target = cv2.resize(target, resize_shape)
         targets.append(target / 255)
 
-        sketch = cv2.imread(os.path.join(os.path.join(sketch_output, '{:03d}'.format(dir_num)), sketch_name)) / 255
+        sketch = cv2.imread(os.path.join(os.path.join(sketch_output, '{:03d}'.format(dir_num)), sketch_name), 0) / 255
         noises = np.random.rand(1000)
         indices = np.random.permutation(resize_shape[0] * resize_shape[1])[:1000]
         noise_channel = np.zeros_like(sketch)
@@ -198,7 +198,7 @@ if __name__ == '__main__':
             noise_channel[val // resize_shape[0]][val % resize_shape[1]] = noises[i]
         sketch = np.expand_dims(sketch, axis=2)
         noise_channel = np.expand_dims(noise_channel, axis=2)
-        sketch_noise = np.concatenate((sketch, noises), axis=2)
+        sketch_noise = np.concatenate((sketch, noise_channel), axis=2)
         inputs.append(sketch_noise)
         # sketch = np.expand_dims(sketch, axis=2)
 
@@ -210,6 +210,9 @@ if __name__ == '__main__':
         color_block = cv2.imread(
             os.path.join(os.path.join(color_block_output, '{:03d}'.format(dir_num)), color_block_name)) / 255
         condition = np.concatenate((color_hint_whiteout, color_block), axis=2)
+        print(count+1)
+        if count >= 100:
+            break
     inputs = np.asarray(inputs)
     targets = np.asarray(targets)
     conditions = np.asarray(conditions)

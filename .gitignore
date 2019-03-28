@@ -4,3 +4,5 @@ dataset/*.jpg
 *.jpg
 *.png
 *__pycache__
+*logs*
+*checkpoints*
