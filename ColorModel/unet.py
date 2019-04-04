@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from DataProcess.data_parser import DataParser
+from DataProcess.data_parser import *
 import os
 import cv2
 
@@ -9,14 +9,11 @@ import cv2
 # base line
 class Unet:
     def __init__(self, image_shape, batch_size):
-        self.input = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], 2), name='input')
-        self.condition = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], 6),
-                                        name='condition')
-        self.target = tf.placeholder(tf.float32, shape=(None, image_shape[0], image_shape[1], 3), name='output')
+        self.image_shape = image_shape
         self.batch_size = batch_size
 
-    def generator(self):
-        inputs = tf.concat(values=[self.input, self.condition], axis=3)
+    def generator(self, input, condition):
+        inputs = tf.concat(values=[input, condition], axis=3)
         with tf.variable_scope('generator'):
             encode1, sample_encode1 = self.cnn_block(inputs, 64, (3, 3), sample_type='conv', scope_name='encode1')
             encode2, sample_encode2 = self.cnn_block(sample_encode1, 128, (3, 3), sample_type='conv',
@@ -47,21 +44,21 @@ class Unet:
             # optimizer = tf.train.AdamOptimizer().minimize(cost)
             return g_logits
 
-    def discriminator(self, input, reuse=False):
-        inputs = tf.concat(values=[input, self.condition], axis=3)
+    def discriminator(self, input, condition, reuse=False):
+        inputs = tf.concat(values=[input, condition], axis=3)
         with tf.variable_scope('discriminator', reuse=reuse):
             layer = tf.layers.conv2d(inputs, 64, (3, 3), padding='same', activation=tf.nn.leaky_relu, name='conv1')
             layer = tf.layers.max_pooling2d(layer, pool_size=(2, 2), strides=(2, 2), name='maxpool1')
             layer = tf.layers.conv2d(layer, 128, (3, 3), padding='same', activation=tf.nn.leaky_relu, name='conv2')
             layer = tf.layers.max_pooling2d(layer, pool_size=(2, 2), strides=(2, 2), name='maxpool2')
-            layer = tf.layers.conv2d(layer, 256, (3, 3), padding='same', activation=tf.nn.leaky_relu, name='conv3')
+            layer = tf.layers.conv2d(layer, 128, (3, 3), padding='same', activation=tf.nn.leaky_relu, name='conv3')
             layer = tf.layers.max_pooling2d(layer, pool_size=(2, 2), strides=(2, 2), name='maxpool3')
-            layer = tf.layers.conv2d(layer, 128, (3, 3), padding='same', activation=tf.nn.leaky_relu, name='conv4')
+            layer = tf.layers.conv2d(layer, 64, (3, 3), padding='same', activation=tf.nn.leaky_relu, name='conv4')
             layer = tf.layers.max_pooling2d(layer, pool_size=(2, 2), strides=(2, 2), name='maxpool4')
             layer = tf.layers.flatten(layer)
-            d_logits = tf.layers.dense(layer, 1000, kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+            d_logits = tf.layers.dense(layer, 100, kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
                                        activation=tf.nn.relu)
-            d_logits = tf.layers.dense(d_logits, 10,
+            d_logits = tf.layers.dense(d_logits, 1,
                                        kernel_initializer=tf.contrib.layers.variance_scaling_initializer())
             return d_logits
 
@@ -80,7 +77,7 @@ class Unet:
 
             else:
                 if deconv_concatenate is None:
-                    raise ValueError('deconv_concatenate can not be None when building deconv structurej')
+                    raise ValueError('deconv_concatenate can not be None when building deconv structure')
                 dcnn = tf.layers.conv2d_transpose(inputs=input, filters=num_filter, kernel_size=kernel_size, strides=2,
                                                   padding='same', activation=tf.nn.leaky_relu, name='deconv1',
                                                   kernel_initializer=tf.contrib.layers.variance_scaling_initializer())
@@ -94,16 +91,20 @@ class Unet:
                 sample_out = None
             return out, sample_out
 
-    def train(self, inputs, targets, conditions, epochs, learning_rate=0.01, clip_low=-1, clip_high=1):
-        d_input = tf.placeholder(tf.float32, shape=(None, inputs.shape[1], inputs.shape[2], 3), name='d_inputs')
-        g_logits = self.generator()
-        d_logits_real = self.discriminator(d_input, reuse=False)
-        d_logits_fake = self.discriminator(g_logits, reuse=True)
+    def train(self, dataset_path, list_files, epochs, learning_rate=0.01, clip_low=-0.01, clip_high=0.01):
+        tf.reset_default_graph()
+        input = tf.placeholder(tf.float32, shape=(None, self.image_shape[0], self.image_shape[1], 1), name='input')
+        condition = tf.placeholder(tf.float32, shape=(None, self.image_shape[0], self.image_shape[1], 6),
+                                   name='condition')
+        target = tf.placeholder(tf.float32, shape=(None, self.image_shape[0], self.image_shape[1], 3), name='output')
+        g_logits = self.generator(input, condition)
+        d_logits_real = self.discriminator(target, condition, reuse=False)
+        d_logits_fake = self.discriminator(g_logits, condition, reuse=True)
 
-        g_loss = tf.reduce_mean(d_logits_fake)
-        d_loss = tf.reduce_mean(d_logits_real - d_logits_fake)
-        tf.summary.scalar('g_loss', g_loss)
-        tf.summary.scalar('d_loss', d_loss)
+        g_loss = -tf.reduce_mean(d_logits_fake)
+        d_loss = tf.reduce_mean(d_logits_fake) - tf.reduce_mean(d_logits_real)
+        # tf.summary.scalar('g_loss', g_loss)
+        # tf.summary.scalar('d_loss', d_loss)
 
         var_g = [var for var in tf.trainable_variables() if var.name.startswith('generator')]
         var_d = [var for var in tf.trainable_variables() if var.name.startswith('discriminator')]
@@ -113,44 +114,56 @@ class Unet:
 
         clip_d_var = [var.assign(tf.clip_by_value(var, clip_low, clip_high)) for var in var_d]
 
-        data_parser_inputs = DataParser(inputs, batch_size=self.batch_size)
-        data_parser_targets = DataParser(targets, batch_size=self.batch_size)
-        data_parser_conditions = DataParser(conditions, batch_size=self.batch_size)
+        data_parser = DataParserV2(dataset_path, self.image_shape, list_files=list_files, batch_size=self.batch_size)
 
-        with tf.Session() as sess:
-            writer = tf.summary.FileWriter('./logs/train', sess.graph)
-            writer_val = tf.summary.FileWriter('./logs/val')
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        with tf.Session(config=config) as sess:
+            # print('enter')
+            # writer = tf.summary.FileWriter('./logs/train', sess.graph)
+            # writer_val = tf.summary.FileWriter('./logs/val')
             saver = tf.train.Saver()
-            merged = tf.summary.merge_all()
+            # merged = tf.summary.merge_all()
+            run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
             sess.run(tf.global_variables_initializer())
-
+            sess.graph.finalize()
+            # print('initializing')
             for epoch in range(epochs):
                 loss_g = 0
                 loss_d = 0
-                for i in range(data_parser_inputs.iteration):
-                    batch_input = data_parser_inputs.get_batch()
-                    batch_target = data_parser_targets.get_batch()
-                    batch_condition = data_parser_conditions.get_batch()
+                for i in range(data_parser.iteration):
+                    batch_input = data_parser.get_batch_sketch()
+                    # print(batch_input.dtype, batch_input.shape)
+                    batch_target = data_parser.get_batch_raw()
+                    # print(batch_target.dtype, batch_target.shape)
+                    batch_condition = data_parser.get_batch_condition()
+                    # print(batch_condition.dtype, batch_condition.shape)
+                    data_parser.update_iterator()
 
+                    for _ in range(5):
+                        _, loss_d = sess.run([d_optimizer, d_loss],
+                                             feed_dict={target: batch_target, input: batch_input,
+                                                        condition: batch_condition}, options=run_options)
+                        sess.run(clip_d_var)
+                    # print('discriminator')
+                    # print('clip')
                     _, loss_g = sess.run([g_optimizer, g_loss],
-                                         feed_dict={self.input: batch_input, self.condition: batch_condition})
-                    _, loss_d = sess.run([d_optimizer, d_loss],
-                                         feed_dict={d_input: batch_target, self.input: batch_input,
-                                                    self.condition: batch_condition})
-                    sess.run(clip_d_var)
+                                         feed_dict={input: batch_input, condition: batch_condition},
+                                         options=run_options)
+                    # print('generator')
 
-                    log = sess.run(merged)
-                    writer.add_summary(log, epoch * data_parser_inputs.iteration + i + 1)
+                    # log = sess.run(merged)
+                    # writer.add_summary(log, epoch * data_parser_inputs.iteration + i + 1)
 
                     if i % 10 == 0:
-                        log_val, val_loss_g, val_loss_d = sess.run([merged, g_loss, d_loss],
-                                                                   feed_dict={self.input: batch_input,
-                                                                              self.condition: batch_condition,
-                                                                              d_input: batch_target})
-                        writer_val.add_summary(log_val, epoch * data_parser_inputs.iteration + i + 1)
+                        # log_val, val_loss_g, val_loss_d = sess.run([merged, g_loss, d_loss],
+                        #                                            feed_dict={input: batch_input,
+                        #                                                       condition: batch_condition,
+                        #                                                       target: batch_target})
+                        # writer_val.add_summary(log_val, epoch * data_parser_inputs.iteration + i + 1)
                         print(
-                            'Epoch: {}, Iteration: {}, g_loss: {}, d_loss: {}, val_g_loss: {}, val_d_loss: {}'.format(
-                                epoch + 1, i + 1, loss_g, loss_d, val_loss_g, val_loss_d))
+                            'Epoch: {}, Iteration: {}/{}, g_loss: {}, d_loss: {}, val_g_loss: {}, val_d_loss: {}'.format(
+                                epoch + 1, i + 1, data_parser.iteration, loss_g, loss_d, loss_g, loss_d))
                 print('*' * 10,
                       'Epoch {}/{} ...'.format(epoch + 1, epochs),
                       'd_loss: {:.4f} ...'.format(loss_d),
@@ -162,60 +175,11 @@ class Unet:
 
 
 if __name__ == '__main__':
-    dir_num = 1
-    base_path = '../dataset/raw_image'  # where the raw images locate
-    sketch_output = '../dataset/sketch'  # directory to store sketches
-    color_hint_output = '../dataset/color_hint'  # directory to store color hint(blur)
-    color_hint_whiteout_output = '../dataset/color_hint_with_whiteout'  # directory to store color hint added whiteout
-    color_block_output = '../dataset/color_block'  # directory to store color block
-    resize_shape = (512, 512)  # raw images should be resized
+    dataset_path = '../dataset'
+    resize_shape = (128, 128)
+    list_files = ['../dataset/image_list_1.txt']
+    batch_size = 32
+    # data_parser = DataParserV2(dataset_path, resize_shape, list_files, batch_size)
 
-    list_file = '../dataset/image_list_{:d}.txt'.format(dir_num)  # get image list
-    with open(list_file, 'r') as f:
-        images_path = f.readlines()
-    targets = []
-    inputs = []
-    conditions = []
-    for count, path in enumerate(images_path):
-        path = path.strip('\n')
-        img_path = os.path.join(base_path, path)
-        img_name = path.split('/')[-1]
-        img_num = img_name.split('/')[-1].split('.')[0]
-        sketch_name = img_num + '_sketch.jpg'
-        color_hint_name = img_num + '_colorhint.jpg'
-        color_hint_whiteout_name = img_num + '_whiteout.jpg'
-        color_block_name = img_num + '_colorblock.jpg'
-
-        target = cv2.imread(img_path)
-        target = cv2.resize(target, resize_shape)
-        targets.append(target / 255)
-
-        sketch = cv2.imread(os.path.join(os.path.join(sketch_output, '{:03d}'.format(dir_num)), sketch_name), 0) / 255
-        noises = np.random.rand(1000)
-        indices = np.random.permutation(resize_shape[0] * resize_shape[1])[:1000]
-        noise_channel = np.zeros_like(sketch)
-        for i, val in enumerate(indices):
-            noise_channel[val // resize_shape[0]][val % resize_shape[1]] = noises[i]
-        sketch = np.expand_dims(sketch, axis=2)
-        noise_channel = np.expand_dims(noise_channel, axis=2)
-        sketch_noise = np.concatenate((sketch, noise_channel), axis=2)
-        inputs.append(sketch_noise)
-        # sketch = np.expand_dims(sketch, axis=2)
-
-        # color_hint = cv2.imread(
-        #     os.path.join(os.path.join(color_hint_output, '{:03d}'.format(dir_num)), color_hint_name)) / 255
-        color_hint_whiteout = cv2.imread(
-            os.path.join(os.path.join(color_hint_whiteout_output, '{:03d}'.format(dir_num)),
-                         color_hint_whiteout_name)) / 255
-        color_block = cv2.imread(
-            os.path.join(os.path.join(color_block_output, '{:03d}'.format(dir_num)), color_block_name)) / 255
-        condition = np.concatenate((color_hint_whiteout, color_block), axis=2)
-        print(count+1)
-        if count >= 100:
-            break
-    inputs = np.asarray(inputs)
-    targets = np.asarray(targets)
-    conditions = np.asarray(conditions)
-
-    model = Unet(resize_shape, batch_size=128)
-    model.train(inputs, targets, conditions, 10)
+    model = Unet(resize_shape, batch_size=batch_size)
+    model.train(dataset_path, list_files, 10, learning_rate=0.01)
