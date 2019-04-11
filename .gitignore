@@ -5,4 +5,5 @@ dataset/*.jpg
 *.png
 *__pycache__
 *logs*
+*results/
 *checkpoints*

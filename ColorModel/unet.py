@@ -56,7 +56,7 @@ class Unet:
             layer = tf.layers.conv2d(layer, 64, (3, 3), padding='same', activation=tf.nn.leaky_relu, name='conv4')
             layer = tf.layers.max_pooling2d(layer, pool_size=(2, 2), strides=(2, 2), name='maxpool4')
             layer = tf.layers.flatten(layer)
-            d_logits = tf.layers.dense(layer, 100, kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
+            d_logits = tf.layers.dense(layer, 1000, kernel_initializer=tf.contrib.layers.variance_scaling_initializer(),
                                        activation=tf.nn.relu)
             d_logits = tf.layers.dense(d_logits, 1,
                                        kernel_initializer=tf.contrib.layers.variance_scaling_initializer())
@@ -91,18 +91,19 @@ class Unet:
                 sample_out = None
             return out, sample_out
 
-    def train(self, dataset_path, list_files, epochs, learning_rate=0.01, clip_low=-0.01, clip_high=0.01):
+    def train(self, dataset_path, list_files, epochs, learning_rate=0.01, clip_low=-0.01, clip_high=0.01, r=0.01):
         tf.reset_default_graph()
         input = tf.placeholder(tf.float32, shape=(None, self.image_shape[0], self.image_shape[1], 1), name='input')
-        condition = tf.placeholder(tf.float32, shape=(None, self.image_shape[0], self.image_shape[1], 6),
+        condition = tf.placeholder(tf.float32, shape=(None, self.image_shape[0], self.image_shape[1], 3),
                                    name='condition')
         target = tf.placeholder(tf.float32, shape=(None, self.image_shape[0], self.image_shape[1], 3), name='output')
         g_logits = self.generator(input, condition)
         d_logits_real = self.discriminator(target, condition, reuse=False)
         d_logits_fake = self.discriminator(g_logits, condition, reuse=True)
 
-        g_loss = -tf.reduce_mean(d_logits_fake)
-        d_loss = tf.reduce_mean(d_logits_fake) - tf.reduce_mean(d_logits_real)
+        l1_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(g_logits - input), axis=0))
+        g_loss = -tf.reduce_mean(d_logits_fake) + r * l1_loss
+        d_loss = -tf.reduce_mean(tf.abs(d_logits_fake - d_logits_real))
         # tf.summary.scalar('g_loss', g_loss)
         # tf.summary.scalar('d_loss', d_loss)
 
@@ -115,9 +116,16 @@ class Unet:
         clip_d_var = [var.assign(tf.clip_by_value(var, clip_low, clip_high)) for var in var_d]
 
         data_parser = DataParserV2(dataset_path, self.image_shape, list_files=list_files, batch_size=self.batch_size)
-
+        data_parser_test = DataParserV2(dataset_path, self.image_shape, list_files=list_files, batch_size=5)
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
+        losses = []
+        test_input = data_parser_test.get_batch_sketch()
+        test_target = data_parser_test.get_batch_raw()
+        test_condition = data_parser_test.get_batch_condition_add()
+        test = {'input': test_input, 'target': test_target, 'condition': test_condition}
+        np.save('./results/test_data_3.npy', test)
+        outputs = []
         with tf.Session(config=config) as sess:
             # print('enter')
             # writer = tf.summary.FileWriter('./logs/train', sess.graph)
@@ -136,7 +144,7 @@ class Unet:
                     # print(batch_input.dtype, batch_input.shape)
                     batch_target = data_parser.get_batch_raw()
                     # print(batch_target.dtype, batch_target.shape)
-                    batch_condition = data_parser.get_batch_condition()
+                    batch_condition = data_parser.get_batch_condition_add()
                     # print(batch_condition.dtype, batch_condition.shape)
                     data_parser.update_iterator()
 
@@ -147,14 +155,14 @@ class Unet:
                         sess.run(clip_d_var)
                     # print('discriminator')
                     # print('clip')
-                    _, loss_g = sess.run([g_optimizer, g_loss],
-                                         feed_dict={input: batch_input, condition: batch_condition},
-                                         options=run_options)
+                    _, loss_g, loss_l1 = sess.run([g_optimizer, g_loss, l1_loss],
+                                                  feed_dict={input: batch_input, condition: batch_condition},
+                                                  options=run_options)
                     # print('generator')
 
                     # log = sess.run(merged)
                     # writer.add_summary(log, epoch * data_parser_inputs.iteration + i + 1)
-
+                    losses.append([loss_d, loss_g, loss_l1])
                     if i % 10 == 0:
                         # log_val, val_loss_g, val_loss_d = sess.run([merged, g_loss, d_loss],
                         #                                            feed_dict={input: batch_input,
@@ -162,24 +170,67 @@ class Unet:
                         #                                                       target: batch_target})
                         # writer_val.add_summary(log_val, epoch * data_parser_inputs.iteration + i + 1)
                         print(
-                            'Epoch: {}, Iteration: {}/{}, g_loss: {}, d_loss: {}, val_g_loss: {}, val_d_loss: {}'.format(
-                                epoch + 1, i + 1, data_parser.iteration, loss_g, loss_d, loss_g, loss_d))
+                            'Epoch: {}, Iteration: {}/{}, g_loss: {}, d_loss: {}, l1 loss: {}'.format(
+                                epoch + 1, i + 1, data_parser.iteration, loss_g, loss_d, loss_l1))
                 print('*' * 10,
                       'Epoch {}/{} ...'.format(epoch + 1, epochs),
                       'd_loss: {:.4f} ...'.format(loss_d),
                       'g_loss: {:.4f} ...'.format(loss_g),
                       '*' * 10)
-                saver.save(sess, './checkpoints/checkpoint_{}.ckpt'.format(epoch + 1))
+                output = sess.run(g_logits, feed_dict={input: test_input, condition: test_condition})
+                outputs.append(output)
+                saver.save(sess, './checkpoints/unet3/checkpoint_{}.ckpt'.format(epoch + 1))
 
-            saver.save(sess, './checkpoints/model.ckpt')
+            saver.save(sess, './checkpoints/unet3/model.ckpt')
+            np.save('./results/predicted_3.npy', outputs)
+        return losses
 
 
 if __name__ == '__main__':
     dataset_path = '../dataset'
-    resize_shape = (128, 128)
+    resize_shape = (256, 256)
     list_files = ['../dataset/image_list_1.txt']
-    batch_size = 32
+    batch_size = 16
     # data_parser = DataParserV2(dataset_path, resize_shape, list_files, batch_size)
 
     model = Unet(resize_shape, batch_size=batch_size)
-    model.train(dataset_path, list_files, 10, learning_rate=0.01)
+    losses = model.train(dataset_path, list_files, 10, learning_rate=0.0005)
+    np.save('./logs/train/losses_2.npy', np.asarray(losses))
+
+    losses = np.asarray(losses)
+    plt.plot(losses[:, 0])
+    plt.title('d loss')
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.show()
+
+    plt.plot(losses[:, 1])
+    plt.title('g loss')
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.show()
+
+    plt.plot(losses[:, 2])
+    plt.title('l1 loss')
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.show()
+
+    imgs = np.load('./results/predicted_3.npy')
+    test = np.load('./results/test_data_3.npy')
+    img = test.item()['target'][0]
+    img = (1 - img) * 255
+    img = img.astype(np.uint8)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    plt.imshow(img)
+    plt.show()
+
+    plt.figure()
+    for i in range(imgs.shape[0]):
+        img = imgs[i, 0]
+        img = (1 - img) * 255
+        img = img.astype(np.uint8)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        plt.subplot(2, 5, i + 1)
+        plt.imshow(img)
+    plt.show()

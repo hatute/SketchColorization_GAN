@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import cv2
+import matplotlib.pyplot as plt
 
 
 class DataParser:
@@ -125,6 +126,51 @@ class DataParserV2:
         color_blocks = self.get_batch_color_block()
         return np.concatenate((white_outs, color_blocks), axis=3)
 
+    def get_batch_condition_add(self):
+        indices = self.get_indices()
+        res = []
+        for id in indices:
+            name_block = os.path.join(self.color_block_path, self.images_name[id].split('.')[0] + '_colorblock.jpg')
+            name_whiteout = os.path.join(self.color_hint_whiteout_path,
+                                         self.images_name[id].split('.')[0] + '_whiteout.jpg')
+            img = cv2.imread(name_block).astype(np.float32)
+            img_block = cv2.resize(img, self.resize_shape)
+            img_block = 1 - img_block / 255
+
+            img = cv2.imread(name_whiteout).astype(np.float32)
+            img_whiteout = cv2.resize(img, self.resize_shape)
+            img_whiteout = 1 - img_whiteout / 255
+
+            tmp = np.sum(img_block, axis=2)
+            # print(len(tmp[tmp > 0]))
+            # print(len(tmp[tmp == 0]))
+            for i in range(img_block.shape[0]):
+                for j in range(img_block.shape[1]):
+                    if tmp[i, j] > 0.1:
+                        img_whiteout[i, j, :] = img_block[i, j, :]
+            res.append(img_whiteout)
+        return np.asarray(res)
+
 
 if __name__ == "__main__":
-    pass
+    data_parser = DataParserV2('../dataset', (512, 512), list_files=['../dataset/image_list_1.txt'], batch_size=1)
+    condition = data_parser.get_batch_condition_add()
+    raw = data_parser.get_batch_raw()
+    raw = (1 - raw) * 255
+    raw = cv2.cvtColor(raw[0], cv2.COLOR_BGR2RGB)
+
+    whiteout = data_parser.get_batch_color_hint_whiteout()
+    whiteout = (1 - whiteout) * 255
+    whiteout = cv2.cvtColor(whiteout[0], cv2.COLOR_BGR2RGB)
+
+    img = (1 - condition) * 255
+    img = cv2.cvtColor(img[0], cv2.COLOR_BGR2RGB)
+
+    plt.figure()
+    plt.subplot(1, 3, 1)
+    plt.imshow(raw.astype(np.uint8))
+    plt.subplot(1, 3, 2)
+    plt.imshow(whiteout.astype(np.uint8))
+    plt.subplot(1, 3, 3)
+    plt.imshow(img.astype(np.uint8))
+    plt.show()
